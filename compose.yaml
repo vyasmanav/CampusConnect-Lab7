@@ -1,0 +1,66 @@
+name: campusconnect-microservices
+
+services:
+  api-gateway:
+    build: ./api-gateway
+    container_name: api-gateway
+    ports:
+      - "3000:3000"
+    environment:
+      - PORT=3000
+      - USER_SERVICE_URL=http://user-service:3001
+      - PRODUCT_SERVICE_URL=http://product-service:3002
+      - ORDER_SERVICE_URL=http://order-service:3003
+    depends_on:
+      - user-service
+      - product-service
+      - order-service
+    networks:
+      - campus-network
+    restart: unless-stopped
+
+  user-service:
+    build: ./user-service
+    container_name: user-service
+    expose:
+      - "3001"
+    environment:
+      - USER_SERVICE_PORT=3001
+      - PORT=3001
+    networks:
+      - campus-network
+    restart: unless-stopped
+
+  product-service:
+    build: ./product-service
+    container_name: product-service
+    expose:
+      - "3002"
+    environment:
+      - PRODUCT_SERVICE_PORT=3002
+      - PORT=3002
+    networks:
+      - campus-network
+    restart: unless-stopped
+
+  order-service:
+    build: ./order-service
+    container_name: order-service
+    expose:
+      - "3003"
+    environment:
+      - ORDER_SERVICE_PORT=3003
+      - PORT=3003
+      - USER_SERVICE_URL=http://user-service:3001
+      - PRODUCT_SERVICE_URL=http://product-service:3002
+    depends_on:
+      - user-service
+      - product-service
+    networks:
+      - campus-network
+    restart: unless-stopped
+
+networks:
+  campus-network:
+    driver: bridge
+    name: campus-network
