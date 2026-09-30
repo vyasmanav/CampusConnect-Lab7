@@ -6,6 +6,8 @@ In **Lab 6**, CampusConnect was decomposed into three independently runnable, co
 In **Lab 7**, we make the API Gateway concrete by introducing a dedicated **API Gateway microservice (`api-gateway`)** running on port `:3000`. The gateway acts as the **single public entry point** for all clients, externalizing service locations via **environment-variable configuration (Service Discovery)**, and providing containerized cloud deployment setup.
 
 - **GitHub Repository**: [https://github.com/vyasmanav/CampusConnect-Lab7](https://github.com/vyasmanav/CampusConnect-Lab7)
+- **Public API Gateway Cloud URL**: [https://campusconnect-lab7.onrender.com](https://campusconnect-lab7.onrender.com)
+- **Public Cloud Health Check Endpoint**: [https://campusconnect-lab7.onrender.com/health](https://campusconnect-lab7.onrender.com/health)
 
 
 ---
