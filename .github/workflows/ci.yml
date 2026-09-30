@@ -1,0 +1,77 @@
+name: CI
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+
+jobs:
+  build-and-test:
+    name: Build, Test & Containerize Microservices
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: 1. Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: 2. Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: 3. Install Dependencies for API Gateway
+        run: |
+          cd api-gateway
+          npm install
+
+      - name: 4. Install Dependencies for User Service
+        run: |
+          cd user-service
+          npm install
+
+      - name: 5. Install Dependencies for Product Service
+        run: |
+          cd product-service
+          npm install
+
+      - name: 6. Install Dependencies for Order Service
+        run: |
+          cd order-service
+          npm install
+
+      - name: 7. Run Microservice Syntax & Smoke Tests
+        run: |
+          node -c api-gateway/server.js
+          node -c user-service/server.js
+          node -c product-service/server.js
+          node -c order-service/server.js
+          echo "✅ All microservices syntax validation passed!"
+
+      - name: 8. Build Docker Image - API Gateway
+        run: |
+          docker build -t api-gateway:${{ github.sha }} ./api-gateway
+
+      - name: 9. Build Docker Image - User Service
+        run: |
+          docker build -t user-service:${{ github.sha }} ./user-service
+
+      - name: 10. Build Docker Image - Product Service
+        run: |
+          docker build -t product-service:${{ github.sha }} ./product-service
+
+      - name: 11. Build Docker Image - Order Service
+        run: |
+          docker build -t order-service:${{ github.sha }} ./order-service
+
+      - name: 12. Validate Kubernetes Manifests Syntax
+        run: |
+          echo "Validating k8s YAML syntax..."
+          python3 -c "
+          import yaml, glob
+          for f in sorted(glob.glob('k8s/*.yaml')):
+              with open(f) as fp:
+                  list(yaml.safe_load_all(fp))
+              print(f'Valid YAML: {f}')
+          "
+          echo "✅ All Kubernetes manifests are valid YAML!"

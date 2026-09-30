@@ -1,159 +1,124 @@
-# CampusConnect - Lab 7: API Gateway, Configuration-Based Service Discovery & Cloud Deployment
+# CampusConnect - Lab 8: Kubernetes Deployment, Basic CI/CD & Monitoring
 
-## 1. Project Overview & Relation to Lab 6
-In **Lab 6**, CampusConnect was decomposed into three independently runnable, containerized microservices (`User Service`, `Product Service`, `Order Service`) communicating directly over a Docker network (`campus-network`), with the API Gateway introduced only conceptually.
+## 1. Application Overview & Lab 7 Starting Point
+In **Lab 7**, CampusConnect was enhanced with a dedicated **API Gateway** acting as a single reverse-proxy entry point and configuration-based service discovery.
 
-In **Lab 7**, we make the API Gateway concrete by introducing a dedicated **API Gateway microservice (`api-gateway`)** running on port `:3000`. The gateway acts as the **single public entry point** for all clients, externalizing service locations via **environment-variable configuration (Service Discovery)**, and providing containerized cloud deployment setup.
+In **Lab 8**, we transition the application into a production-grade **DevOps & Cloud-Native workflow**:
+1. **Kubernetes Orchestration**: Containerizing into Pods, Deployments, ClusterIP Services, NodePort Gateway, and ConfigMaps inside the `lab8` namespace.
+2. **Kubernetes Capabilities**: Demonstrating internal DNS service discovery, horizontal pod scaling (1 ➔ 3 replicas), and automatic self-healing.
+3. **Continuous Integration (CI)**: Automated GitHub Actions workflow (`.github/workflows/ci.yml`) triggering on pushes and pull requests to install dependencies, run syntax/smoke tests, build Docker images, and validate YAML manifests.
+4. **Observability & Monitoring**: Native Prometheus metrics exposition (`GET /metrics`), Prometheus scraping configuration, and Grafana dashboard visualization.
 
 - **GitHub Repository**: [https://github.com/vyasmanav/CampusConnect-Lab7](https://github.com/vyasmanav/CampusConnect-Lab7)
-- **Public API Gateway Cloud URL**: [https://campusconnect-lab7.onrender.com](https://campusconnect-lab7.onrender.com)
-- **Public Cloud Health Check Endpoint**: [https://campusconnect-lab7.onrender.com/health](https://campusconnect-lab7.onrender.com/health)
-
+- **Live Public Cloud Gateway**: [https://campusconnect-lab7.onrender.com](https://campusconnect-lab7.onrender.com)
 
 ---
 
-## 2. System Architecture & Docker Network Layering
+## 2. End-to-End System Architecture
 
 ```mermaid
 graph TD
     Client["Client / Postman / Browser"]
     
-    subgraph Public Internet / Cloud Entry
-        GW["API Gateway (:3000)\nReverse Proxy, Logging & Health Check"]
+    subgraph Kubernetes Cluster (Namespace: lab8)
+        GW_SVC["Gateway Service (NodePort :30080 / :3000)"]
+        GW_POD["API Gateway Pod\n(:3000, /metrics, /health)"]
+        
+        CM["ConfigMap: campusconnect-config"]
+        
+        US_SVC["user-service:3001 (ClusterIP)"]
+        PS_SVC["product-service:3002 (ClusterIP)"]
+        OS_SVC["order-service:3003 (ClusterIP)"]
+        
+        US_POD1["User Pod 1"]
+        US_POD2["User Pod 2"]
+        US_POD3["User Pod 3"]
+        
+        PS_POD["Product Pod"]
+        OS_POD["Order Pod"]
     end
     
-    subgraph Docker Network: campus-network (Internal Only)
-        US["User Service (:3001)"]
-        PS["Product Service (:3002)"]
-        OS["Order Service (:3003)"]
+    subgraph Monitoring Stack
+        PROM["Prometheus (:9090)\nScrapes /metrics"]
+        GRAF["Grafana (:3005)\nMetrics Dashboard"]
     end
-    
+
     subgraph Database Layer
-        UDB[("User DB / Atlas")]
-        PDB[("Product DB / Atlas")]
-        ODB[("Order DB / Atlas")]
+        ATLAS[("MongoDB Atlas Cloud Database")]
     end
 
-    Client -->|REST Requests| GW
+    Client -->|HTTP Traffic| GW_SVC
+    GW_SVC --> GW_POD
+    CM -.->|Environment Config| GW_POD
+    CM -.->|Environment Config| US_POD1
+    CM -.->|Environment Config| PS_POD
+    CM -.->|Environment Config| OS_POD
     
-    GW -->|GET/POST/PUT/DELETE /users/*| US
-    GW -->|GET/POST/PUT/DELETE /products/*| PS
-    GW -->|GET/POST/DELETE /orders/*| OS
+    GW_POD -->|http://user-service:3001| US_SVC
+    GW_POD -->|http://product-service:3002| PS_SVC
+    GW_POD -->|http://order-service:3003| OS_SVC
     
-    OS -->|Internal REST GET /users/{id}| US
-    OS -->|Internal REST GET /products/{id}| PS
+    US_SVC --> US_POD1
+    US_SVC --> US_POD2
+    US_SVC --> US_POD3
     
-    US --- UDB
-    PS --- PDB
-    OS --- ODB
+    PS_SVC --> PS_POD
+    OS_SVC --> OS_POD
+    
+    OS_POD -->|Validate User| US_SVC
+    OS_POD -->|Validate Product| PS_SVC
+    
+    US_POD1 --- ATLAS
+    PS_POD --- ATLAS
+    OS_POD --- ATLAS
+    
+    PROM -->|Scrape metrics| GW_POD
+    GRAF -->|Query| PROM
 ```
 
-> **Security & Encapsulation Boundary**: In Docker Compose (`compose.yaml`), **only the API Gateway port (`3000`) is exposed externally**. `User Service` (`3001`), `Product Service` (`3002`), and `Order Service` (`3003`) are kept strictly internal to `campus-network` and cannot be reached directly from outside the network.
-
 ---
 
-## 3. Gateway Endpoints & Routing Table
+## 3. Kubernetes Deployment Guide (Part A)
 
-| Gateway Path | Target Microservice | Target Service URL (Configured) | Method Supported | Description |
-| :--- | :--- | :--- | :--- | :--- |
-| `GET /health` | Gateway Itself | Local / Self | `GET` | Health check endpoint reporting gateway status & service registry |
-| `/users/*` | **User Service** | `USER_SERVICE_URL` (`:3001`) | `GET`, `POST`, `PUT`, `DELETE` | Manages user profiles & authentication data |
-| `/products/*` | **Product Service** | `PRODUCT_SERVICE_URL` (`:3002`) | `GET`, `POST`, `PUT`, `DELETE` | Manages course catalog & products |
-| `/orders/*` | **Order Service** | `ORDER_SERVICE_URL` (`:3003`) | `GET`, `POST`, `DELETE` | Manages order creation with inter-service validation |
+### 3.1 Directory Structure (`k8s/`)
+- `k8s/namespace.yaml`: Dedicated `lab8` namespace.
+- `k8s/configmap.yaml`: ClusterIP service URLs and configurations.
+- `k8s/gateway-deployment.yaml` & `k8s/gateway-service.yaml`: Exposing port 3000 (NodePort 30080).
+- `k8s/user-deployment.yaml` & `k8s/user-service.yaml`: ClusterIP port 3001.
+- `k8s/product-deployment.yaml` & `k8s/product-service.yaml`: ClusterIP port 3002.
+- `k8s/order-deployment.yaml` & `k8s/order-service.yaml`: ClusterIP port 3003.
 
----
-
-## 4. Discussion Answers (Required PDF Deliverables)
-
-### Part A Discussion: Why introduce an API Gateway instead of letting clients call each service directly?
-Direct client-to-microservice communication introduces several significant drawbacks:
-1. **Coupling to Internal Topology**: Clients must maintain URLs for every microservice. If services split, merge, or change ports, all client applications break.
-2. **Security Vulnerability**: Exposing multiple microservice ports increases the attack surface.
-3. **Cross-Cutting Concerns Duplication**: Authentication, CORS headers, rate limiting, request logging, and SSL termination would need to be re-implemented inside every microservice.
-4. **Network Efficiency**: An API Gateway aggregates requests, hides backend microservice locations, and provides a single secure ingress point over HTTPS.
-
-### Part B Discussion: Static/Config-Based vs. Dynamic Service Discovery
-- **Static / Configuration-Based Service Discovery (Implemented)**:
-  Service locations are passed to the API Gateway at startup via environment variables (`USER_SERVICE_URL`, `PRODUCT_SERVICE_URL`, `ORDER_SERVICE_URL`).
-  - *Pros*: Extremely simple, zero external runtime overhead, perfect for Docker Compose / fixed container environments.
-  - *Cons*: Updating a service location requires updating environment variables and restarting the gateway container.
-- **Dynamic Service Discovery (e.g., Consul, Netflix Eureka, Kubernetes DNS)**:
-  Services dynamically register themselves with a central registry upon startup and send periodic heartbeats.
-  - *Pros*: Supports dynamic auto-scaling, automatic instance registration/deregistration, client-side load balancing, and zero-downtime routing.
-  - *What Dynamic Registry Adds*: Automatic health-check eviction, dynamic IP binding, and multi-instance load balancing that static configuration files cannot provide without manual intervention.
-
----
-
-## 5. How to Run & Verify Locally
-
-### Option A: Via Docker Compose (Recommended)
+### 3.2 Quick Start Commands
 ```bash
-# 1. Build images and start all 4 containers
-docker compose up -d --build
+# 1. Create lab8 namespace and apply all manifests
+kubectl apply -f k8s/namespace.yaml
+kubectl apply -f k8s/ -n lab8
 
-# 2. Check running containers
-docker compose ps
+# 2. Check running resources
+kubectl get deployments,pods,services -n lab8
 
-# 3. View API Gateway logs
-docker compose logs -f api-gateway
-```
+# 3. Test scaling User Service (1 -> 3 replicas)
+kubectl scale deployment user-service --replicas=3 -n lab8
 
-### Option B: Run Standalone Services
-```bash
-# Terminal 1: User Service
-cd user-service && npm start
-
-# Terminal 2: Product Service
-cd product-service && npm start
-
-# Terminal 3: Order Service
-cd order-service && npm start
-
-# Terminal 4: API Gateway
-cd api-gateway && npm start
+# 4. Test self-healing
+kubectl delete pod <user-service-pod-name> -n lab8
+kubectl get pods -n lab8
 ```
 
 ---
 
-## 6. Testing Guide & Expected Responses
-
-Import `RESTful_Web_Services_Lab_7.postman_collection.json` into Postman:
-
-| Test Scenario | Endpoint | Expected Status |
-| :--- | :--- | :--- |
-| **Gateway Health Check** | `GET http://localhost:3000/health` | `200 OK` |
-| **Routed Users Request** | `GET http://localhost:3000/users` | `200 OK` |
-| **Routed Products Request** | `GET http://localhost:3000/products` | `200 OK` |
-| **Routed Orders Request** | `GET http://localhost:3000/orders` | `200 OK` |
-| **Routed Valid Order Creation** | `POST http://localhost:3000/orders` | `201 Created` |
-| **Unreachable Service Error** | `GET http://localhost:3000/users` *(when User Service stopped)* | `503 Service Unavailable` |
+## 4. GitHub Actions CI Pipeline (Part B)
+Workflow file: **[`.github/workflows/ci.yml`](file:///d:/Sem%203/WSOA/CampusConnect/.github/workflows/ci.yml)**
+- Triggered automatically on push / pull requests to `main`.
+- Runs on Ubuntu runner.
+- Installs dependencies across all 4 services, validates syntax, builds Docker images, and validates Kubernetes YAML manifests.
 
 ---
 
-## 7. Cloud Deployment Guide (Render / Railway / Fly.io / AWS)
-
-### Deploying to Cloud (e.g., Render / Railway)
-1. **Container Images**: Push individual Dockerfiles or use GitHub repository integration.
-2. **Environment Variables**:
-   - `PORT`: `3000`
-   - `USER_SERVICE_URL`: `https://campusconnect-user-service.onrender.com`
-   - `PRODUCT_SERVICE_URL`: `https://campusconnect-product-service.onrender.com`
-   - `ORDER_SERVICE_URL`: `https://campusconnect-order-service.onrender.com`
-   - `MONGO_URI`: MongoDB Atlas connection string (`mongodb+srv://...`)
-3. **Public URL Verification**: Once deployed, verify `https://<your-gateway-cloud-url>/health` and re-run Postman collection against the cloud domain.
-
----
-
-## 8. Written Reflection (Lab 6 vs Lab 7)
-Moving from Lab 6 to Lab 7 transformed our microservices system from an internal collection of exposed containers into a production-ready cloud architecture. By introducing the API Gateway, external clients no longer need knowledge of individual microservice ports or internal topologies. Hiding the backend services behind Docker network boundaries improved overall system security. Furthermore, configuration-driven service discovery simplified environment switching between local development (`localhost`) and cloud deployment (`Render/AWS`) without modifying a single line of application code.
-
----
-
-## 9. Submission Files Checklist
-- `api-gateway/` (`server.js`, `package.json`, `Dockerfile`, `.dockerignore`)
-- `user-service/`, `product-service/`, `order-service/`
-- `compose.yaml` & `docker-compose.yml` (Gateway port `3000` exposed, microservices internal)
-- `.env` & `.env.example`
-- `RESTful_Web_Services_Lab_7.postman_collection.json`
-- `README.md` & `LAB7_README.md`
-- `make_zip_lab7.js` -> produces `Lab7_202512062.zip`
+## 5. Prometheus & Grafana Monitoring (Part C)
+- API Gateway exposes live metrics at `GET /metrics`.
+- Prometheus configuration in `monitoring/prometheus.yml`.
+- Run traffic generator:
+  ```bash
+  node monitoring/generate_traffic.js
+  ```

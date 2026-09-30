@@ -1,0 +1,146 @@
+{
+	"info": {
+		"_postman_id": "lab8-k8s-monitoring-collection",
+		"name": "Kubernetes, CI/CD & Monitoring – Lab 8",
+		"description": "Postman Collection for Web Services & SOA Laboratory - Lab 8: Kubernetes Deployment, Service Discovery, GitHub Actions CI, Prometheus & Grafana Monitoring.",
+		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+	},
+	"item": [
+		{
+			"name": "01 Gateway - Health Check",
+			"request": {
+				"method": "GET",
+				"header": [],
+				"url": {
+					"raw": "http://localhost:3000/health",
+					"protocol": "http",
+					"host": ["localhost"],
+					"port": "3000",
+					"path": ["health"]
+				},
+				"description": "Verifies API Gateway is running and reporting active service registry."
+			},
+			"response": []
+		},
+		{
+			"name": "02 Gateway - Prometheus Metrics (/metrics)",
+			"request": {
+				"method": "GET",
+				"header": [],
+				"url": {
+					"raw": "http://localhost:3000/metrics",
+					"protocol": "http",
+					"host": ["localhost"],
+					"port": "3000",
+					"path": ["metrics"]
+				},
+				"description": "Scrapes Prometheus text-formatted metrics from the API Gateway."
+			},
+			"response": []
+		},
+		{
+			"name": "03 Gateway - GET All Users (User Service)",
+			"request": {
+				"method": "GET",
+				"header": [],
+				"url": {
+					"raw": "http://localhost:3000/users",
+					"protocol": "http",
+					"host": ["localhost"],
+					"port": "3000",
+					"path": ["users"]
+				},
+				"description": "Routes GET /users through Gateway to User Service."
+			},
+			"response": []
+		},
+		{
+			"name": "04 Gateway - GET All Products (Product Service)",
+			"request": {
+				"method": "GET",
+				"header": [],
+				"url": {
+					"raw": "http://localhost:3000/products",
+					"protocol": "http",
+					"host": ["localhost"],
+					"port": "3000",
+					"path": ["products"]
+				},
+				"description": "Routes GET /products through Gateway to Product Service."
+			},
+			"response": []
+		},
+		{
+			"name": "05 Gateway - GET All Orders (Order Service)",
+			"request": {
+				"method": "GET",
+				"header": [],
+				"url": {
+					"raw": "http://localhost:3000/orders",
+					"protocol": "http",
+					"host": ["localhost"],
+					"port": "3000",
+					"path": ["orders"]
+				},
+				"description": "Routes GET /orders through Gateway to Order Service."
+			},
+			"response": []
+		},
+		{
+			"name": "06 Gateway - POST Create Valid Order (Inter-Service)",
+			"request": {
+				"method": "POST",
+				"header": [
+					{
+						"key": "Content-Type",
+						"value": "application/json"
+					}
+				],
+				"body": {
+					"mode": "raw",
+					"raw": "{\n  \"userId\": \"1\",\n  \"productId\": \"101\",\n  \"quantity\": 2\n}"
+				},
+				"url": {
+					"raw": "http://localhost:3000/orders",
+					"protocol": "http",
+					"host": ["localhost"],
+					"port": "3000",
+					"path": ["orders"]
+				},
+				"description": "Routes POST /orders through Gateway with inter-service validation."
+			},
+			"response": []
+		},
+		{
+			"name": "07 Kubernetes NodePort Gateway - Health Check",
+			"request": {
+				"method": "GET",
+				"header": [],
+				"url": {
+					"raw": "http://localhost:30080/health",
+					"protocol": "http",
+					"host": ["localhost"],
+					"port": "30080",
+					"path": ["health"]
+				},
+				"description": "Tests API Gateway exposed via Kubernetes NodePort Service on port 30080."
+			},
+			"response": []
+		},
+		{
+			"name": "08 Cloud Gateway - Public Render URL Health Check",
+			"request": {
+				"method": "GET",
+				"header": [],
+				"url": {
+					"raw": "https://campusconnect-lab7.onrender.com/health",
+					"protocol": "https",
+					"host": ["campusconnect-lab7", "onrender", "com"],
+					"path": ["health"]
+				},
+				"description": "Public Cloud-hosted Gateway Health Check."
+			},
+			"response": []
+		}
+	]
+}

@@ -1,0 +1,24 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: campusconnect-config
+  namespace: lab8
+  labels:
+    app: campusconnect
+data:
+  # Port Configurations
+  PORT: "3000"
+  GATEWAY_PORT: "3000"
+  USER_SERVICE_PORT: "3001"
+  PRODUCT_SERVICE_PORT: "3002"
+  ORDER_SERVICE_PORT: "3003"
+
+  # Kubernetes Internal Service Discovery URLs (Using ClusterIP Service Names)
+  USER_SERVICE_URL: "http://user-service:3001"
+  PRODUCT_SERVICE_URL: "http://product-service:3002"
+  ORDER_SERVICE_URL: "http://order-service:3003"
+
+  # Database Connection URIs (MongoDB Atlas / Internal fallback)
+  USER_MONGO_URI: "mongodb://127.0.0.1:27017/user_db"
+  PRODUCT_MONGO_URI: "mongodb://127.0.0.1:27017/product_db"
+  ORDER_MONGO_URI: "mongodb://127.0.0.1:27017/order_db"

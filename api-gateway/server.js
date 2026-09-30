@@ -16,14 +16,55 @@ const serviceRegistry = {
 app.use(cors());
 app.use(express.json());
 
-// Request Logging Middleware
+// Prometheus Metrics Tracking
+const metrics = {
+  requestCount: {},
+  requestDurationTotalMs: 0,
+  totalRequests: 0,
+  errorCount: 0
+};
+
+// Request Logging and Prometheus Metric Tracking Middleware
 app.use((req, res, next) => {
   const start = Date.now();
   res.on('finish', () => {
     const duration = Date.now() - start;
+    metrics.totalRequests++;
+    metrics.requestDurationTotalMs += duration;
+    const key = `${req.method}_${req.baseUrl || req.path}_${res.statusCode}`;
+    metrics.requestCount[key] = (metrics.requestCount[key] || 0) + 1;
+    if (res.statusCode >= 400) {
+      metrics.errorCount++;
+    }
     console.log(`[API-GATEWAY] ${new Date().toISOString()} | ${req.method} ${req.originalUrl} -> Status: ${res.statusCode} (${duration}ms)`);
   });
   next();
+});
+
+// Prometheus Scrape Endpoint (GET /metrics)
+app.get('/metrics', (req, res) => {
+  const memoryUsage = process.memoryUsage();
+  let promOutput = `# HELP up Application availability\n# TYPE up gauge\nup{service="api-gateway"} 1\n\n`;
+  promOutput += `# HELP http_requests_total Total number of HTTP requests processed\n# TYPE http_requests_total counter\n`;
+  
+  if (Object.keys(metrics.requestCount).length === 0) {
+    promOutput += `http_requests_total{method="GET",handler="/health",status="200"} 0\n`;
+  } else {
+    for (const [key, count] of Object.entries(metrics.requestCount)) {
+      const parts = key.split('_');
+      const method = parts[0];
+      const status = parts[parts.length - 1];
+      const handler = parts.slice(1, -1).join('_') || '/';
+      promOutput += `http_requests_total{method="${method}",handler="${handler}",status="${status}"} ${count}\n`;
+    }
+  }
+
+  promOutput += `\n# HELP http_requests_errors_total Total HTTP 4xx/5xx errors\n# TYPE http_requests_errors_total counter\nhttp_requests_errors_total{service="api-gateway"} ${metrics.errorCount}\n\n`;
+  promOutput += `# HELP process_resident_memory_bytes Resident memory size in bytes\n# TYPE process_resident_memory_bytes gauge\nprocess_resident_memory_bytes ${memoryUsage.rss}\n\n`;
+  promOutput += `# HELP process_uptime_seconds Process uptime in seconds\n# TYPE process_uptime_seconds gauge\nprocess_uptime_seconds ${Math.floor(process.uptime())}\n`;
+
+  res.set('Content-Type', 'text/plain; version=0.0.4; charset=utf-8');
+  res.send(promOutput);
 });
 
 // Gateway Health Check Endpoint (GET /health)
@@ -36,6 +77,7 @@ app.get('/health', (req, res) => {
     serviceRegistry: serviceRegistry
   });
 });
+
 
 // Helper for Proxy Options & Centralized Error Handling
 function createProxyOptions(serviceName, targetUrl) {
